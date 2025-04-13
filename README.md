@@ -22,10 +22,9 @@ used to load that particular configuration.  This allows for maintaining
 multiple configurations in one tnas-cert.ini file where
 each ***section_name*** may be an individual ***TrueNAS*** host.
 
-If the optioanl argument ***section_name*** is not provided, The
+If the optional argument ***section_name*** is not provided, The
 ***default*** section name is chosen to load the configuration if
-the ***default*** section name exists in the configuration file,
-otherwise a configuration error is printed and the program exits.
+it exists.
 
 See the sample **tnas-cert.ini** file.
 
