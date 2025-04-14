@@ -29,25 +29,25 @@ func TestNewConfig(t *testing.T) {
 	if cfg == nil || err != nil {
 		t.Errorf("New config failed with error: %v", err)
 	}
-	if cfg.Connect_host != "nas01.mydomain.com" {
+	if cfg.ConnectHost != "nas01.mydomain.com" {
 		t.Errorf("Connect_host should be nas01.mydomain.com")
 	}
 	if cfg.Private_key_path != "test_files/privkey.pem" {
 		t.Errorf("Private_key_path should be test_files/privkey.pem")
 	}
-	if cfg.Fullchain_path != "test_files/fullchain.pem" {
+	if cfg.FullChainPath != "test_files/fullchain.pem" {
 		t.Errorf("Fullchain_path should be test_files/fullchain.pem")
 	}
 	if cfg.Protocol != "wss" {
 		t.Errorf("Protocol should be wss")
 	}
-	if cfg.TLS_skip_verify != false {
+	if cfg.TlsSkipVerify != false {
 		t.Errorf("TLS_skip_verify should be false")
 	}
-	if cfg.Delete_old_certs != true {
+	if cfg.DeleteOldCerts != true {
 		t.Errorf("Delete_old_certs should be true")
 	}
-	if cfg.Add_as_ui_certificate != true {
+	if cfg.AddAsUiCertificate != true {
 		t.Errorf("Add_as_ui_certificate should be true")
 	}
 
@@ -61,7 +61,7 @@ func TestNewConfig(t *testing.T) {
 	if cfg, err = New(configFile, "nas02"); err != nil {
 		t.Errorf("New config failed with error: %v", err)
 	}
-	if cfg.Connect_host != "nas02.mydomain.com" {
+	if cfg.ConnectHost != "nas02.mydomain.com" {
 		t.Errorf("Connect_host should be nas02.mydomain.com")
 	}
 
@@ -74,7 +74,7 @@ func TestNewConfig(t *testing.T) {
 	if cfg, err = New(configFile, "nas03"); err != nil {
 		t.Errorf("New config failed with error: %v", err)
 	}
-	if cfg.Connect_host != "nas03.mydomain.com" {
+	if cfg.ConnectHost != "nas03.mydomain.com" {
 		t.Errorf("Connect_host should be nas02.mydomain.com")
 	}
 

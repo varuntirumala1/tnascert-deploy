@@ -33,16 +33,16 @@ const (
 )
 
 type Config struct {
-	Api_key               string `ini:"api_key"`               // TrueNAS 64 byte API Key
-	Cert_basename         string `ini:"cert_basename"`         // basename for cert naming in TrueNAS
-	Connect_host          string `ini:"connect_host"`          // TrueNAS hostname
-	Delete_old_certs      bool   `ini:"delete_old_certs"`      // whether to remove old certificates
-	Fullchain_path        string `ini:"full_chain_path"`       // path to full_chain.pem
-	Port                  uint64 `ini:"port"`                  // TrueNAS API endpoint port
-	Protocol              string `ini:"protocol"`              // websocket protocol 'ws' or 'wss' 'wss' is default
-	Private_key_path      string `ini:"private_key_path"`      // path to private_key.pem
-	TLS_skip_verify       bool   `ini:"tls_skip_verify"`       // strict SSL cert verification of the endpoint
-	Add_as_ui_certificate bool   `ini:"add_as_ui_certificate"` // Install as the active UI certificate if true
+	Api_key            string `ini:"api_key"`               // TrueNAS 64 byte API Key
+	CertBasename       string `ini:"cert_basename"`         // basename for cert naming in TrueNAS
+	ConnectHost        string `ini:"connect_host"`          // TrueNAS hostname
+	DeleteOldCerts     bool   `ini:"delete_old_certs"`      // whether to remove old certificates
+	FullChainPath      string `ini:"full_chain_path"`       // path to full_chain.pem
+	Port               uint64 `ini:"port"`                  // TrueNAS API endpoint port
+	Protocol           string `ini:"protocol"`              // websocket protocol 'ws' or 'wss' 'wss' is default
+	Private_key_path   string `ini:"private_key_path"`      // path to private_key.pem
+	TlsSkipVerify      bool   `ini:"tls_skip_verify"`       // strict SSL cert verification of the endpoint
+	AddAsUiCertificate bool   `ini:"add_as_ui_certificate"` // Install as the active UI certificate if true
 }
 
 func New(config_file string, section string) (*Config, error) {
@@ -79,13 +79,13 @@ func (c *Config) checkConfig() error {
 		return fmt.Errorf("invalid or empty api_key")
 	}
 	// if not the cert_basename is not defined use the default
-	if c.Cert_basename == "" {
-		c.Cert_basename = Default_base_cert_name
+	if c.CertBasename == "" {
+		c.CertBasename = Default_base_cert_name
 	}
-	if c.Connect_host == "" {
+	if c.ConnectHost == "" {
 		return fmt.Errorf("connect_host is not defined")
 	}
-	if c.Fullchain_path == "" {
+	if c.FullChainPath == "" {
 		return fmt.Errorf("fullchain_path is not defined")
 	}
 	// if port is not defined, use the default

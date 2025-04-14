@@ -31,7 +31,7 @@ import (
 
 const endpoint = "api/current"
 
-var certs_list map[string]int64 = map[string]int64{}
+var certsList map[string]int64 = map[string]int64{}
 
 // login with an API key
 func clientLogin(client *truenas_api.Client, cfg *config.Config) error {
@@ -45,18 +45,18 @@ func deployCertificate(client *truenas_api.Client, cert_name string, cfg *config
 	log.Println("Deploying certificate", cert_name)
 
 	// read in the certificate data
-	cert_pem, err := os.ReadFile(cfg.Fullchain_path)
+	certPem, err := os.ReadFile(cfg.FullChainPath)
 	if err != nil {
 		return fmt.Errorf("could not load the certificate, %v", err)
 	}
 	// read in the private key data
-	key_pem, err := os.ReadFile(cfg.Private_key_path)
+	keyPem, err := os.ReadFile(cfg.Private_key_path)
 	if err != nil {
 		return fmt.Errorf("could not load the private key, %v", err)
 	}
 
-	params := map[string]string{"name": cert_name, "certificate": string(cert_pem),
-		"privatekey": string(key_pem), "create_type": "CERTIFICATE_CREATE_IMPORTED"}
+	params := map[string]string{"name": cert_name, "certificate": string(certPem),
+		"privatekey": string(keyPem), "create_type": "CERTIFICATE_CREATE_IMPORTED"}
 	args := []map[string]string{params}
 
 	// call the api to create and deploy the certificate
@@ -64,12 +64,12 @@ func deployCertificate(client *truenas_api.Client, cert_name string, cfg *config
 	if err != nil {
 		return err
 	} else {
-		resp_map := make(map[string]interface{})
-		err = json.Unmarshal(job, &resp_map)
+		respMap := make(map[string]interface{})
+		err = json.Unmarshal(job, &respMap)
 		if err != nil {
 			return err
 		}
-		log.Printf("Job created id: %v", resp_map["result"])
+		log.Printf("Job created id: %v", respMap["result"])
 	}
 
 	var inlist bool = false
@@ -79,33 +79,33 @@ func deployCertificate(client *truenas_api.Client, cert_name string, cfg *config
 	// including the newly created certificate
 	for !inlist && count != 10 {
 		count++
-		args2 := []string{}
+		var args2 []string
 		resp, err := client.Call("app.certificate_choices", 10, args2)
 		if err != nil {
 			return err
 		}
-		resp_map := make(map[string]interface{})
-		err = json.Unmarshal(resp, &resp_map)
+		respMap := make(map[string]interface{})
+		err = json.Unmarshal(resp, &respMap)
 		if err != nil {
 			return err
 		}
-		list := resp_map["result"].([]interface{})
+		list := respMap["result"].([]interface{})
 		for _, v := range list {
 			var m = v.(map[string]interface{})
-			_, ok := certs_list[m["name"].(string)]
+			_, ok := certsList[m["name"].(string)]
 			// add certificate to the cert_list if not already there
 			// and skipping those that do not match the cert_basename
 			if !ok {
 				nm := m["name"].(string)
-				idvalue := m["id"].(float64)
-				id := int64(idvalue)
+				value := m["id"].(float64)
+				id := int64(value)
 				// only add certs that match the Cert_basename to the list
-				if strings.HasPrefix(nm, cfg.Cert_basename) {
-					certs_list[nm] = id
+				if strings.HasPrefix(nm, cfg.CertBasename) {
+					certsList[nm] = id
 					log.Printf("certificate name: %v, is: %d", m["name"], id)
 				}
 			}
-			if id, ok := certs_list[cert_name]; ok == true {
+			if id, ok := certsList[cert_name]; ok == true {
 				log.Printf("found new certificate: %v, id: %d", m["name"], id)
 				inlist = true
 			}
@@ -122,8 +122,8 @@ func deployCertificate(client *truenas_api.Client, cert_name string, cfg *config
 }
 
 func InstallCertificate(cfg *config.Config) error {
-	var serverURL = fmt.Sprintf("%s://%s:%d/%s", cfg.Protocol, cfg.Connect_host, cfg.Port, endpoint)
-	var cert_name = cfg.Cert_basename + strftime.Format("-%Y-%m-%d-%s", time.Now())
+	var serverURL = fmt.Sprintf("%s://%s:%d/%s", cfg.Protocol, cfg.ConnectHost, cfg.Port, endpoint)
+	var certName = cfg.CertBasename + strftime.Format("-%Y-%m-%d-%s", time.Now())
 
 	// connect to the truenas api endpoint
 	client, err := truenas_api.NewClient(serverURL, false)
@@ -138,14 +138,14 @@ func InstallCertificate(cfg *config.Config) error {
 		log.Println("Successfully logged in")
 	}
 	// deploy the certificate
-	err = deployCertificate(client, cert_name, cfg)
+	err = deployCertificate(client, certName, cfg)
 	if err != nil {
 		return err
 	}
 
-	if cfg.Add_as_ui_certificate {
+	if cfg.AddAsUiCertificate {
 		pmap := make(map[string]int64)
-		pmap["ui_certificate"] = certs_list[cert_name]
+		pmap["ui_certificate"] = certsList[certName]
 		args := []map[string]int64{pmap}
 		_, err := client.Call("system.general.update", 10, args)
 		if err != nil {
@@ -155,9 +155,10 @@ func InstallCertificate(cfg *config.Config) error {
 		_, err = client.Call("system.general.ui_restart", 10, arg)
 	}
 
-	if cfg.Delete_old_certs {
-		for k, v := range certs_list {
-			if strings.Compare(k, cert_name) == 0 {
+	// if configured to do so, delete old certificates matching the cert basename pattern
+	if cfg.DeleteOldCerts {
+		for k, v := range certsList {
+			if strings.Compare(k, certName) == 0 {
 				continue
 			}
 			arg := []int64{v}

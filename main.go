@@ -45,7 +45,7 @@ func main() {
 	var section string = config.Default_section
 
 	// parse out command line options
-	config_file := getopt.StringLong("config", 'c', config.Config_file, "full path to the configuration file")
+	configFile := getopt.StringLong("config", 'c', config.Config_file, "full path to the configuration file")
 	help := getopt.BoolLong("help", 'h', "print usage information and exit")
 	getopt.SetParameters("ini_section_name")
 
@@ -59,13 +59,13 @@ func main() {
 		section = args[0]
 	}
 
-	cfg, err := config.New(*config_file, section)
+	cfg, err := config.New(*configFile, section)
 	if err != nil {
 		log.Fatalln("Error loading config,", err)
 	}
 
 	// run a simple check of the certificate and private key before deployment.
-	err = verifyCertificateKeyPair(cfg.Fullchain_path, cfg.Private_key_path)
+	err = verifyCertificateKeyPair(cfg.FullChainPath, cfg.Private_key_path)
 	if err != nil {
 		log.Fatalf("verifying certificate key pair, %v", err)
 	} else {
