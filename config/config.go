@@ -43,6 +43,8 @@ type Config struct {
 	Private_key_path   string `ini:"private_key_path"`      // path to private_key.pem
 	TlsSkipVerify      bool   `ini:"tls_skip_verify"`       // strict SSL cert verification of the endpoint
 	AddAsUiCertificate bool   `ini:"add_as_ui_certificate"` // Install as the active UI certificate if true
+	Environment        string `ini:"environment"`           // environment is either 'production' or 'test'
+	Debug              bool   `ini:"debug"`                 // debug logging if true
 }
 
 func New(config_file string, section string) (*Config, error) {
@@ -75,12 +77,17 @@ func New(config_file string, section string) (*Config, error) {
 }
 
 func (c *Config) checkConfig() error {
-	if len(c.Api_key) < 66 {
+	if c.Environment != "production" && c.Environment != "test" {
+		return fmt.Errorf("invalid environment setting, use 'production' or 'test'")
+	}
+	if c.Environment == "production" && len(c.Api_key) < 66 {
 		return fmt.Errorf("invalid or empty api_key")
 	}
 	// if not the cert_basename is not defined use the default
 	if c.CertBasename == "" {
 		c.CertBasename = Default_base_cert_name
+	} else if c.Environment == "test" {
+		c.CertBasename = "tnas-cert-deploy"
 	}
 	if c.ConnectHost == "" {
 		return fmt.Errorf("connect_host is not defined")

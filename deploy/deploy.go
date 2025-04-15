@@ -23,73 +23,125 @@ import (
 	"github.com/ncruces/go-strftime"
 	"log"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 	"tnascert-deploy/config"
+	"tnascert-deploy/mock"
 	"truenas_api/truenas_api"
 )
 
 const endpoint = "api/current"
 
+// certificate list obtained from TrueNAS client or the mock client
 var certsList map[string]int64 = map[string]int64{}
 
-// login with an API key
-func clientLogin(client *truenas_api.Client, cfg *config.Config) error {
-	username, password := "", ""
-	apikey := cfg.Api_key
-	return client.Login(username, password, apikey)
+// Client interface
+type Client interface {
+	Login(username string, password string, apiKey string) error
+	Call(method string, timeout int64, params interface{}) (json.RawMessage, error)
 }
 
-// deploy certificate
-func deployCertificate(client *truenas_api.Client, cert_name string, cfg *config.Config) error {
-	log.Println("Deploying certificate", cert_name)
+// uses the configuration 'Environment' setting to get either a truenas_api.Client or a mock.Client used for testing.
+func NewClient(serverURL string, cfg *config.Config) (Client, string, error) {
 
+	if cfg.Environment == "production" {
+		log.Println("Using production environment")
+		certName := cfg.CertBasename + strftime.Format("-%Y-%m-%d-%s", time.Now())
+		client, err := truenas_api.NewClient(serverURL, cfg.TlsSkipVerify)
+		if err != nil {
+			return client, certName, fmt.Errorf("NewClient(): %v", err)
+		} else {
+			return client, certName, nil
+		}
+	} else if cfg.Environment == "test" {
+		log.Println("NewClient(): Using test environment")
+		certName := mock.GetCertName(cfg)
+		client, err := mock.NewClient(serverURL, cfg.TlsSkipVerify)
+		if err != nil {
+			return client, certName, fmt.Errorf("NewClient(): %v", err)
+		} else {
+			return client, certName, nil
+		}
+	}
+	return nil, "", fmt.Errorf("NewClient(): Invalid environment")
+}
+
+// login with an API key
+func clientLogin(client Client, cfg *config.Config) error {
+	username, password := "", ""
+	apikey := cfg.Api_key
+	err := client.Login(username, password, apikey)
+	if err == nil {
+		log.Println("clientLogin(): successfully logged in")
+		return nil
+	}
+	return fmt.Errorf("clientLogin: %v", err)
+}
+
+// create the certificate in TrueNAS
+func createCertificate(client Client, certName string, cfg *config.Config) error {
 	// read in the certificate data
 	certPem, err := os.ReadFile(cfg.FullChainPath)
 	if err != nil {
-		return fmt.Errorf("could not load the certificate, %v", err)
+		return fmt.Errorf("createCertificate(): could not load the certificate, %v", err)
 	}
 	// read in the private key data
 	keyPem, err := os.ReadFile(cfg.Private_key_path)
 	if err != nil {
-		return fmt.Errorf("could not load the private key, %v", err)
+		return fmt.Errorf("createCertificate(): could not load the private key, %v", err)
 	}
 
-	params := map[string]string{"name": cert_name, "certificate": string(certPem),
+	if cfg.Debug {
+		log.Printf("createCertificate(): install certificate: %s", certName)
+	}
+
+	params := map[string]string{"name": certName, "certificate": string(certPem),
 		"privatekey": string(keyPem), "create_type": "CERTIFICATE_CREATE_IMPORTED"}
 	args := []map[string]string{params}
 
 	// call the api to create and deploy the certificate
-	job, err := client.Call("certificate.create", 10, args)
+	resp, err := client.Call("certificate.create", 10, args)
 	if err != nil {
-		return err
+		return fmt.Errorf("createCertificate(): %v", err)
 	} else {
-		respMap := make(map[string]interface{})
-		err = json.Unmarshal(job, &respMap)
-		if err != nil {
-			return err
+		if cfg.Debug {
+			log.Printf("createCertificate(): certificate.create response was: %s", string(resp))
 		}
-		log.Printf("Job created id: %v", respMap["result"])
+		respMap := make(map[string]interface{})
+		err = json.Unmarshal(resp, &respMap)
+		if err != nil {
+			return fmt.Errorf("createCertificate(): %v", err)
+		}
+		log.Printf("createCertificate(): Job created id: %v", respMap["result"])
 	}
+	return nil
+}
 
+// poll and save all deployed certificates matching our Cert_basename
+// including the newly created certificate
+func loadCertificateList(client Client, certName string, cfg *config.Config) error {
 	var inlist bool = false
 	var count = 0
 
-	// poll and save all deployed certificates matching our Cert_basename
-	// including the newly created certificate
+	// poll until the list shows up with the newly created certificate or give up after 10 seconds.
 	for !inlist && count != 10 {
 		count++
-		arg := []string{}
-		resp, err := client.Call("app.certificate_choices", 10, arg)
+		args := []string{}
+		resp, err := client.Call("app.certificate_choices", 10, args)
 		if err != nil {
 			return err
 		}
-		log.Printf("choices response: %v", string(resp))
+		if cfg.Debug {
+			log.Printf("resp: %v", string(resp))
+		}
+
 		respMap := make(map[string]interface{})
 		err = json.Unmarshal(resp, &respMap)
 		if err != nil {
 			return err
 		}
+
 		list := respMap["result"].([]interface{})
 		for _, v := range list {
 			var m = v.(map[string]interface{})
@@ -97,16 +149,18 @@ func deployCertificate(client *truenas_api.Client, cert_name string, cfg *config
 			// add certificate to the cert_list if not already there
 			// and skipping those that do not match the cert_basename
 			if !ok {
-				nm := m["name"].(string)
+				var nm string = m["name"].(string)
 				value := m["id"].(float64)
 				id := int64(value)
 				// only add certs that match the Cert_basename to the list
 				if strings.HasPrefix(nm, cfg.CertBasename) {
 					certsList[nm] = id
-					log.Printf("certificate name: %v, is: %d", m["name"], id)
+					if cfg.Debug {
+						log.Printf("certificate name: %v, is: %d", m["name"], id)
+					}
 				}
 			}
-			if id, ok := certsList[cert_name]; ok == true {
+			if id, ok := certsList[certName]; ok == true {
 				log.Printf("found new certificate: %v, id: %d", m["name"], id)
 				inlist = true
 			}
@@ -115,9 +169,9 @@ func deployCertificate(client *truenas_api.Client, cert_name string, cfg *config
 	}
 
 	if !inlist {
-		return fmt.Errorf("search timeout, certificate %s was not deployed", cert_name)
+		return fmt.Errorf("search timeout, certificate %s was not deployed", certName)
 	} else {
-		log.Printf("certificate %s deployed successfully", cert_name)
+		log.Printf("certificate %s deployed successfully", certName)
 	}
 	return nil
 }
@@ -126,20 +180,28 @@ func InstallCertificate(cfg *config.Config) error {
 	var serverURL = fmt.Sprintf("%s://%s:%d/%s", cfg.Protocol, cfg.ConnectHost, cfg.Port, endpoint)
 	var certName = cfg.CertBasename + strftime.Format("-%Y-%m-%d-%s", time.Now())
 
-	// connect to the truenas api endpoint
-	client, err := truenas_api.NewClient(serverURL, false)
+	//
+	client, certName, err := NewClient(serverURL, cfg)
+	if cfg.Debug {
+		log.Println("client is Type:", reflect.TypeOf(client))
+	}
+	log.Printf("installing certificate: %s", certName)
+
 	if err != nil {
-		return err
+		return fmt.Errorf("NewClient() error: %v", err)
 	}
 	// login
 	err = clientLogin(client, cfg)
 	if err != nil {
 		return err
-	} else {
-		log.Println("Successfully logged in")
 	}
 	// deploy the certificate
-	err = deployCertificate(client, certName, cfg)
+	err = createCertificate(client, certName, cfg)
+	if err != nil {
+		return err
+	}
+
+	err = loadCertificateList(client, certName, cfg)
 	if err != nil {
 		return err
 	}
