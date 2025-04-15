@@ -79,11 +79,12 @@ func deployCertificate(client *truenas_api.Client, cert_name string, cfg *config
 	// including the newly created certificate
 	for !inlist && count != 10 {
 		count++
-		var args2 []string
-		resp, err := client.Call("app.certificate_choices", 10, args2)
+		arg := []string{}
+		resp, err := client.Call("app.certificate_choices", 10, arg)
 		if err != nil {
 			return err
 		}
+		log.Printf("choices response: %v", string(resp))
 		respMap := make(map[string]interface{})
 		err = json.Unmarshal(resp, &respMap)
 		if err != nil {
