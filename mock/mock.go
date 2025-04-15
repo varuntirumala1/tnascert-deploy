@@ -15,6 +15,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/*
+ *  This package is strictly for unit testing.  It is a mock client used to test the
+ *  deploy package
+ */
+
 package mock
 
 import (

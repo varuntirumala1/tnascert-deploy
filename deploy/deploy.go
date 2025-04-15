@@ -70,6 +70,9 @@ func NewClient(serverURL string, cfg *config.Config) (Client, string, error) {
 // login with an API key
 func clientLogin(client Client, cfg *config.Config) error {
 	username, password := "", ""
+	if cfg.Api_key == "" {
+		return fmt.Errorf("NewClient(): No api key")
+	}
 	apikey := cfg.Api_key
 	err := client.Login(username, password, apikey)
 	if err == nil {
