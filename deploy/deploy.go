@@ -132,19 +132,16 @@ func createCertificate(client Client, certName string, cfg *config.Config) error
 
 	log.Printf("started the certificate creation job with ID: %d", job.ID)
 
-	// TODO implement this functionality with goroutine mock.Client for testing
-	if cfg.Environment == "production" {
-		// Monitor the progress of the job.
-		for !job.Finished {
-			select {
-			case progress := <-job.ProgressCh:
-				log.Printf("Job progress: %.2f%%", progress)
-			case err := <-job.DoneCh:
-				if err != "" {
-					return fmt.Errorf("Job failed: %v", err)
-				} else {
-					log.Println("Job completed successfully!")
-				}
+	// Monitor the progress of the job.
+	for !job.Finished {
+		select {
+		case progress := <-job.ProgressCh:
+			log.Printf("Job progress: %.2f%%", progress)
+		case err := <-job.DoneCh:
+			if err != "" {
+				return fmt.Errorf("Job failed: %v", err)
+			} else {
+				log.Println("Job completed successfully!")
 			}
 		}
 	}

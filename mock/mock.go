@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/truenas/api_client_golang/truenas_api"
+	"time"
 	"tnascert-deploy/config"
 )
 
@@ -85,11 +86,27 @@ func (c *Client) Call(method string, timeout int64, params interface{}) (json.Ra
 	return nil, nil
 }
 
-func (c *Client) CallWithJob(method string, params interface{}, callback func(progress float64, state string, desc string)) (*truenas_api.Job, error) {
-	var job truenas_api.Job
-	job.ID = 1
+func jobRunner(job *truenas_api.Job) {
+	time.Sleep(2 * time.Second)
+	job.ProgressCh <- 100
+	job.DoneCh <- ""
+	job.Finished = true
+	close(job.DoneCh)
+	close(job.ProgressCh)
+}
 
-	return &job, nil
+func (c *Client) CallWithJob(method string, params interface{}, callback func(progress float64, state string, desc string)) (*truenas_api.Job, error) {
+	job := &truenas_api.Job{
+		ID:         100,
+		Method:     "certificate.create",
+		State:      "PENDING",
+		ProgressCh: make(chan float64),
+		DoneCh:     make(chan string),
+	}
+
+	go jobRunner(job)
+
+	return job, nil
 }
 
 func (c *Client) Close() error {
