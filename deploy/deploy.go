@@ -184,7 +184,7 @@ func loadCertificateList(client Client, certName string, cfg *config.Config) err
 			if strings.HasPrefix(name, cfg.CertBasename) {
 				certsList[name] = id
 				if cfg.Debug {
-					log.Printf("certificate name: %v, id: %d", cert["name"], id)
+					log.Printf("cert list, name: %v, id: %d", cert["name"], id)
 				}
 			}
 		}
@@ -205,6 +205,7 @@ func loadCertificateList(client Client, certName string, cfg *config.Config) err
 func InstallCertificate(cfg *config.Config) error {
 	var serverURL = fmt.Sprintf("%s://%s:%d/%s", cfg.Protocol, cfg.ConnectHost, cfg.Port, endpoint)
 	var certName = cfg.CertBasename + strftime.Format("-%Y-%m-%d-%s", time.Now())
+	var activated = false
 
 	// connect to the server websocket endpoint
 	client, certName, err := NewClient(serverURL, cfg)
@@ -242,24 +243,36 @@ func InstallCertificate(cfg *config.Config) error {
 		if err != nil {
 			return fmt.Errorf("system.general.update of ui_certificate, %v", err)
 		}
-		arg := []map[string]interface{}{}
-		_, err = client.Call("system.general.ui_restart", 10, arg)
+		activated = true
+		log.Printf("%s is now the active UI certificate", certName)
 	}
 
-	// if configured to do so, delete old certificates matching the cert basename pattern
-	if cfg.DeleteOldCerts {
-		for k, v := range certsList {
-			if strings.Compare(k, certName) == 0 {
-				continue
-			}
-			arg := []int64{v}
-			_, err := client.Call("certificate.delete", 10, arg)
-			if err != nil {
-				return fmt.Errorf("certificate deletion failed, %v", err)
-			} else {
-				log.Printf("certficate %v was deleted", k)
+	if activated {
+		// if configured to do so, delete old certificates matching the cert basename pattern
+		if cfg.DeleteOldCerts && activated == true {
+			for k, v := range certsList {
+				if strings.Compare(k, certName) == 0 {
+					continue
+				}
+				arg := []int64{v}
+				_, err := client.Call("certificate.delete", 10, arg)
+				if err != nil {
+					return fmt.Errorf("certificate deletion failed, %v", err)
+				} else {
+					log.Printf("certficate %v was deleted", k)
+				}
 			}
 		}
+		// restart the UI
+		arg := []map[string]interface{}{}
+		_, err = client.Call("system.general.ui_restart", 10, arg)
+		if err != nil {
+			return fmt.Errorf("failed to restart the UI, %v", err)
+		} else {
+			log.Println("the UI has been restarted")
+		}
+	} else {
+		log.Printf("%s was not activated as the UI certificate therefore no certificates will be deleted", certName)
 	}
 
 	return nil
