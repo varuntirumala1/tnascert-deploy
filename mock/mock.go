@@ -81,8 +81,23 @@ func (c *Client) Call(method string, timeout int64, params interface{}) (json.Ra
 			resp = json.RawMessage(res)
 			return resp, nil
 		}
+	} else if method == "ftp.update" {
+                result := map[string]interface{} {
+			"testresult": "ok",
+		}
+		args := map[string]interface{}{
+          		"jsonrpc": "2.0",
+			"id":	   1,
+			"result":  result,
+		}
+		res, err := json.Marshal(args)
+		if err != nil {
+			return res, fmt.Errorf("mock.Call(): Error marshalling response: %v", err)
+		} else {
+			resp := json.RawMessage(res)
+			return resp, nil
+		}
 	}
-
 	return nil, nil
 }
 
