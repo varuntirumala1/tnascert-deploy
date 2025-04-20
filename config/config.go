@@ -33,18 +33,19 @@ const (
 )
 
 type Config struct {
-	Api_key            string `ini:"api_key"`               // TrueNAS 64 byte API Key
-	CertBasename       string `ini:"cert_basename"`         // basename for cert naming in TrueNAS
-	ConnectHost        string `ini:"connect_host"`          // TrueNAS hostname
-	DeleteOldCerts     bool   `ini:"delete_old_certs"`      // whether to remove old certificates
-	FullChainPath      string `ini:"full_chain_path"`       // path to full_chain.pem
-	Port               uint64 `ini:"port"`                  // TrueNAS API endpoint port
-	Protocol           string `ini:"protocol"`              // websocket protocol 'ws' or 'wss' 'wss' is default
-	Private_key_path   string `ini:"private_key_path"`      // path to private_key.pem
-	TlsSkipVerify      bool   `ini:"tls_skip_verify"`       // strict SSL cert verification of the endpoint
-	AddAsUiCertificate bool   `ini:"add_as_ui_certificate"` // Install as the active UI certificate if true
-	Environment        string `ini:"environment"`           // environment is either 'production' or 'test'
-	Debug              bool   `ini:"debug"`                 // debug logging if true
+	Api_key             string `ini:"api_key"`                // TrueNAS 64 byte API Key
+	CertBasename        string `ini:"cert_basename"`          // basename for cert naming in TrueNAS
+	ConnectHost         string `ini:"connect_host"`           // TrueNAS hostname
+	DeleteOldCerts      bool   `ini:"delete_old_certs"`       // whether to remove old certificates
+	FullChainPath       string `ini:"full_chain_path"`        // path to full_chain.pem
+	Port                uint64 `ini:"port"`                   // TrueNAS API endpoint port
+	Protocol            string `ini:"protocol"`               // websocket protocol 'ws' or 'wss' 'wss' is default
+	Private_key_path    string `ini:"private_key_path"`       // path to private_key.pem
+	TlsSkipVerify       bool   `ini:"tls_skip_verify"`        // strict SSL cert verification of the endpoint
+	AddAsUiCertificate  bool   `ini:"add_as_ui_certificate"`  // Install as the active UI certificate if true
+	AddAsFTPCertificate bool   `ini:"add_as_ftp_certificate"` // Install as the active FTP service certificate if true
+	Environment         string `ini:"environment"`            // environment is either 'production' or 'test'
+	Debug               bool   `ini:"debug"`                  // debug logging if true
 }
 
 func New(config_file string, section string) (*Config, error) {

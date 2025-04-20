@@ -43,6 +43,12 @@ type CertificateListResponse struct {
 	Result  []map[string]interface{} `json:"result"`
 }
 
+type FTPUpdateResponse struct {
+	JsonRPC string                 `json:"jsonrpc"`
+	ID      int                    `json:"id"`
+	Result  map[string]interface{} `json:"result"`
+}
+
 const endpoint = "api/current"
 
 // certificate list obtained from TrueNAS client or the mock client
@@ -247,9 +253,27 @@ func InstallCertificate(cfg *config.Config) error {
 		log.Printf("%s is now the active UI certificate", certName)
 	}
 
+	if cfg.AddAsFTPCertificate {
+		pmap := make(map[string]int64)
+		pmap["ssltls_certificate"] = certsList[certName]
+		args := []map[string]int64{pmap}
+		resp, err := client.Call("ftp.update", 10, args)
+		if err != nil {
+			return fmt.Errorf("updating the FTP service certificate failed, %v", err)
+		}
+		var response FTPUpdateResponse
+		err = json.Unmarshal(resp, &response)
+		if err != nil {
+			return err
+		}
+		if cfg.Debug {
+			log.Printf("ftp service update response: %v", response)
+		}
+		log.Printf("%s is now the active FTP service certificate", certName)
+	}
 	if activated {
 		// if configured to do so, delete old certificates matching the cert basename pattern
-		if cfg.DeleteOldCerts && activated == true {
+		if cfg.DeleteOldCerts {
 			for k, v := range certsList {
 				if strings.Compare(k, certName) == 0 {
 					continue
