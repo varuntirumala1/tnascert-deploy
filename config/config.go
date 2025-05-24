@@ -47,7 +47,7 @@ type Config struct {
 	AddAsFTPCertificate bool   `ini:"add_as_ftp_certificate"` // Install as the active FTP service certificate if true
 	AddAsAppCertificate bool   `ini:"add_as_app_certificate"` // Install as the active APP service certificate if true
 	Environment         string `ini:"environment"`            // environment is either 'production' or 'test'
-	TimeoutSeconds	    int64  `ini:"timeoutSeconds"`	  // the number of seconds after which the truenas client calls fail
+	TimeoutSeconds      int64  `ini:"timeoutSeconds"`         // the number of seconds after which the truenas client calls fail
 	Debug               bool   `ini:"debug"`                  // debug logging if true
 }
 
