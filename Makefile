@@ -28,12 +28,15 @@ vet: fmt
 	go vet ./...
 
 test: vet
+	go test
 	go test ./...
 
 build: test
 	go build
 
 run-tests:
+	@echo "\nRunning main package tests"
+	@go test
 	@echo "\nRunning config package tests"
 	@(cd config && go test)
 	@echo "\nRunning deploy package tests"
