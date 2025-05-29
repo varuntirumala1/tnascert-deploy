@@ -18,6 +18,8 @@
 package config
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +65,16 @@ func TestNewConfig(t *testing.T) {
 	}
 	if cfg.ConnectHost != "nas02.mydomain.com" {
 		t.Errorf("Connect_host should be nas02.mydomain.com")
+	}
+	serverURL := cfg.ServerURL()
+	if serverURL != "wss://nas02.mydomain.com:443/api/current" {
+		t.Errorf("ServerURL should be wss://nas02.mydomain.com:443/api/current")
+	}
+
+	certName := cfg.CertName()
+	if strings.HasPrefix(certName, "letsencrypt-") == false {
+		t.Errorf("CertName Prefix should be letsencrypt-")
+		fmt.Printf("CertName: %s\n", certName)
 	}
 
 	// test checkConfig function
