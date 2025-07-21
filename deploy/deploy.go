@@ -160,17 +160,17 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 			log.Printf("started the app update job with ID: %d", job.ID)
 
 			// Monitor the progress of the job.
-		appUpdateLoop:
-			for !job.Finished {
+			jobCompleted := false
+			for !job.Finished && !jobCompleted {
 				select {
 				case progress := <-job.ProgressCh:
 					log.Printf("Job progress: %.2f%%", progress)
 				case err := <-job.DoneCh:
+					jobCompleted = true
 					if err != "" {
 						return fmt.Errorf("job failed: %v", err)
 					} else {
 						log.Println("Job completed successfully!")
-						break appUpdateLoop
 					}
 				}
 			}
@@ -271,17 +271,17 @@ func createCertificate(client Client, cfg *config.Config) error {
 	log.Printf("started the certificate creation job with ID: %d", job.ID)
 
 	// Monitor the progress of the job.
-certLoop:
-	for !job.Finished {
+	jobCompleted := false
+	for !job.Finished && !jobCompleted {
 		select {
 		case progress := <-job.ProgressCh:
 			log.Printf("Job progress: %.2f%%", progress)
 		case err := <-job.DoneCh:
+			jobCompleted = true
 			if err != "" {
 				return fmt.Errorf("job failed: %v", err)
 			} else {
 				log.Println("Job completed successfully!")
-				break certLoop
 			}
 		}
 	}
@@ -317,17 +317,17 @@ func deleteCertificates(client Client, cfg *config.Config) error {
 		log.Printf("deleting old certificate %v, with job ID: %d", k, job.ID)
 
 		// Monitor the progress of the job.
-	deleteLoop:
-		for !job.Finished {
+		jobCompleted := false
+		for !job.Finished && !jobCompleted {
 			select {
 			case progress := <-job.ProgressCh:
 				log.Printf("Job progress: %.2f%%", progress)
 			case err := <-job.DoneCh:
+				jobCompleted = true
 				if err != "" {
 					return fmt.Errorf("job failed: %v", err)
 				} else {
 					log.Printf("job completed successfully, certificate %v was deleted", k)
-					break deleteLoop
 				}
 			}
 		}
