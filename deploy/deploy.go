@@ -410,6 +410,30 @@ func loadCertificateList(client Client, cfg *config.Config) error {
 	return nil
 }
 
+// checkForRecentCertificate checks if there's already a recent certificate for the same base name
+// A certificate is considered recent if it was created within the last hour
+func checkForRecentCertificate(cfg *config.Config) bool {
+	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	
+	for certName := range certsList {
+		if strings.HasPrefix(certName, cfg.CertBasename) {
+			// Extract timestamp from certificate name (format: basename-YYYY-MM-DD-timestamp)
+			if len(certName) > len(cfg.CertBasename)+11 { // +11 for "-YYYY-MM-DD-"
+				timestampStr := certName[len(cfg.CertBasename)+11:] // Get the timestamp part
+				if timestamp, err := time.Parse("1502151504", timestampStr); err == nil {
+					if timestamp.After(oneHourAgo) {
+						if cfg.Debug {
+							log.Printf("found recent certificate %s created at %v", certName, timestamp)
+						}
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 func InstallCertificate(client Client, cfg *config.Config) error {
 	var certName string = cfg.CertName()
 	var activated = false
@@ -425,14 +449,15 @@ func InstallCertificate(client Client, cfg *config.Config) error {
 		return err
 	}
 
-	// First check if a certificate with this name already exists and is current
+	// First check if a certificate with this base name already exists and is recent
 	err = loadCertificateList(client, cfg)
 	if err == nil {
-		// Certificate already exists, skip creation
-		if _, exists := certsList[certName]; exists {
-			log.Printf("certificate %s already exists, skipping creation", certName)
+		// Check for existing recent certificates with the same base name
+		recentCertExists := checkForRecentCertificate(cfg)
+		if recentCertExists {
+			log.Printf("recent certificate for %s already exists, skipping creation", cfg.CertBasename)
 		} else {
-			// deploy the certificate only if it doesn't exist
+			// deploy the certificate only if no recent cert exists
 			err = createCertificate(client, cfg)
 			if err != nil {
 				return err
