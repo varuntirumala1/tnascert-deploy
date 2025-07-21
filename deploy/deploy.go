@@ -160,6 +160,7 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 			log.Printf("started the app update job with ID: %d", job.ID)
 
 			// Monitor the progress of the job.
+		appUpdateLoop:
 			for !job.Finished {
 				select {
 				case progress := <-job.ProgressCh:
@@ -169,7 +170,7 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 						return fmt.Errorf("job failed: %v", err)
 					} else {
 						log.Println("Job completed successfully!")
-						break
+						break appUpdateLoop
 					}
 				}
 			}
