@@ -2,7 +2,27 @@
  * Copyright (C) 2025 by John J. Rushford jrushford@apache.org
  *
  * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
+ * it under the ter			// Monitor the progress of the job with timeout (use longer timeout for app updates)
+			appUpdateTimeout := cfg.TimeoutSeconds
+			if appUpdateTimeout < 30 {
+				appUpdateTimeout = 60 // Use minimum 60 seconds for app updates
+			}
+			jobCompleted := false
+			timeout := time.After(time.Duration(appUpdateTimeout) * time.Second)
+			
+			for !job.Finished && !jobCompleted {
+				select {
+				case progress := <-job.ProgressCh:
+					log.Printf("Job progress: %.2f%%", progress)
+				case err := <-job.DoneCh:
+					jobCompleted = true
+					if err != "" {
+						return fmt.Errorf("installing the certificate failed, %v", err)
+					} else {
+						log.Printf("Job completed successfully!")
+					}
+				case <-timeout:
+					return fmt.Errorf("installing the certificate failed, job timed out after %d seconds", appUpdateTimeout)eral Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
@@ -488,7 +508,23 @@ func checkIfUpdateNeeded(client Client, cfg *config.Config) (bool, int64) {
 	// First check if there are any recent certificates for this base name
 	recentCertID := findRecentCertificate(cfg)
 	if recentCertID <= 0 {
-		// No recent certificate exists, we need to create one
+		// No recent certificate exists, check if we have any valid certificate that's not expiring soon
+		validCertID := findValidCertificate(cfg)
+		if validCertID > 0 {
+			if cfg.Debug {
+				log.Printf("Found valid non-expiring certificate (ID: %d), checking if apps need update", validCertID)
+			}
+			// Check if apps are already using this certificate
+			if cfg.AddAsAppCertificate {
+				appsNeedUpdate := checkIfAppsNeedCertUpdate(client, cfg, validCertID)
+				if !appsNeedUpdate {
+					return false, validCertID // Certificate is valid and apps are using it
+				}
+				return true, validCertID // Use existing cert but update apps
+			}
+			return false, validCertID // Certificate is valid, no updates needed
+		}
+		// No valid certificate exists, we need to create one
 		return true, 0
 	}
 
@@ -548,6 +584,43 @@ func findRecentCertificate(cfg *config.Config) int64 {
 	}
 
 	return mostRecentID
+}
+
+// findValidCertificate finds a certificate that's not expiring within 30 days
+func findValidCertificate(cfg *config.Config) int64 {
+	thirtyDaysFromNow := time.Now().Add(30 * 24 * time.Hour)
+	
+	if cfg.Debug {
+		log.Printf("Looking for valid certificates for %s (not expiring before %v)", cfg.CertBasename, thirtyDaysFromNow)
+	}
+
+	for certName, id := range certsList {
+		if strings.HasPrefix(certName, cfg.CertBasename) {
+			parts := strings.Split(certName, "-")
+			if len(parts) >= 4 {
+				timestampStr := parts[len(parts)-1]
+				if timestamp, err := strconv.ParseInt(timestampStr, 10, 64); err == nil {
+					certTime := time.Unix(timestamp, 0)
+					// Assume Let's Encrypt certificates are valid for 90 days
+					expiryTime := certTime.Add(90 * 24 * time.Hour)
+					if cfg.Debug {
+						log.Printf("Checking certificate %s (ID: %d) expires at %v", certName, id, expiryTime)
+					}
+					if expiryTime.After(thirtyDaysFromNow) {
+						if cfg.Debug {
+							log.Printf("Found valid certificate: %s (ID: %d) expires %v", certName, id, expiryTime)
+						}
+						return id
+					}
+				}
+			}
+		}
+	}
+
+	if cfg.Debug {
+		log.Printf("No valid non-expiring certificates found for %s", cfg.CertBasename)
+	}
+	return 0
 }
 
 // checkIfAppsNeedCertUpdate checks if any apps need certificate updates
