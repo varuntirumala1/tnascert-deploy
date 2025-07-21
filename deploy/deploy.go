@@ -24,6 +24,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 	"tnascert-deploy/config"
@@ -118,6 +119,12 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 				if cfg.Debug {
 					log.Printf("App %s already has the correct certificate (ID: %d), skipping update", app["name"], ID)
 				}
+				continue
+			}
+			
+			// Check if the app is already using a recent certificate for the same base name
+			if isAppUsingRecentCert(currentCertID, cfg) {
+				log.Printf("App %s is already using a recent certificate for %s, skipping update", app["name"], cfg.CertBasename)
 				continue
 			}
 			
@@ -411,19 +418,53 @@ func loadCertificateList(client Client, cfg *config.Config) error {
 }
 
 // checkForRecentCertificate checks if there's already a recent certificate for the same base name
-// A certificate is considered recent if it was created within the last hour
+// A certificate is considered recent if it was created within the last 30 minutes
 func checkForRecentCertificate(cfg *config.Config) bool {
-	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	thirtyMinutesAgo := time.Now().Add(-30 * time.Minute)
 	
 	for certName := range certsList {
 		if strings.HasPrefix(certName, cfg.CertBasename) {
-			// Extract timestamp from certificate name (format: basename-YYYY-MM-DD-timestamp)
-			if len(certName) > len(cfg.CertBasename)+11 { // +11 for "-YYYY-MM-DD-"
-				timestampStr := certName[len(cfg.CertBasename)+11:] // Get the timestamp part
-				if timestamp, err := time.Parse("1502151504", timestampStr); err == nil {
-					if timestamp.After(oneHourAgo) {
+			// Extract timestamp from certificate name (format: basename-YYYY-MM-DD-unixtimestamp)
+			parts := strings.Split(certName, "-")
+			if len(parts) >= 4 {
+				// Get the last part which should be the unix timestamp
+				timestampStr := parts[len(parts)-1]
+				// Parse as unix timestamp (seconds since epoch)
+				if timestamp, err := strconv.ParseInt(timestampStr, 10, 64); err == nil {
+					certTime := time.Unix(timestamp, 0)
+					if certTime.After(thirtyMinutesAgo) {
 						if cfg.Debug {
-							log.Printf("found recent certificate %s created at %v", certName, timestamp)
+							log.Printf("found recent certificate %s created at %v (within 30 minutes)", certName, certTime)
+						}
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// isAppUsingRecentCert checks if the given certificate ID corresponds to a recent certificate for the same base name
+func isAppUsingRecentCert(certID int64, cfg *config.Config) bool {
+	if certID <= 0 {
+		return false
+	}
+	
+	thirtyMinutesAgo := time.Now().Add(-30 * time.Minute)
+	
+	// Find the certificate name for this ID
+	for certName, id := range certsList {
+		if id == certID && strings.HasPrefix(certName, cfg.CertBasename) {
+			// Extract timestamp from certificate name
+			parts := strings.Split(certName, "-")
+			if len(parts) >= 4 {
+				timestampStr := parts[len(parts)-1]
+				if timestamp, err := strconv.ParseInt(timestampStr, 10, 64); err == nil {
+					certTime := time.Unix(timestamp, 0)
+					if certTime.After(thirtyMinutesAgo) {
+						if cfg.Debug {
+							log.Printf("App is using recent certificate %s (ID: %d) created at %v", certName, certID, certTime)
 						}
 						return true
 					}
