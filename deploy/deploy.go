@@ -80,11 +80,11 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("app query failed, %v, ", err)
 	}
-	 for _, app := range response.Result {
-			// If an app name is specified, only apply to that app
-			if cfg.AppName != "" && app["name"].(string) != cfg.AppName {
-				continue
-			}
+	for _, app := range response.Result {
+		// If an app name is specified, only apply to that app
+		if cfg.AppName != "" && app["name"].(string) != cfg.AppName {
+			continue
+		}
 
 		var response AppConfigResponse
 		args := []interface{}{app["id"]}
