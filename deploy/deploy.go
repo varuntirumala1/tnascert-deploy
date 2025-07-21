@@ -97,6 +97,29 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 			return fmt.Errorf("app config query failed, %v", err)
 		}
 		if len(response.Result.IxCertificates) != 0 {
+			
+			// Check if the app already has the correct certificate
+			currentCertID := int64(-1)
+			if response.Result.Network != nil {
+				if certIDVal, exists := response.Result.Network["certificate_id"]; exists {
+					switch v := certIDVal.(type) {
+					case float64:
+						currentCertID = int64(v)
+					case int64:
+						currentCertID = v
+					case int:
+						currentCertID = int64(v)
+					}
+				}
+			}
+			
+			if currentCertID == ID {
+				if cfg.Debug {
+					log.Printf("App %s already has the correct certificate (ID: %d), skipping update", app["name"], ID)
+				}
+				continue
+			}
+			
 			var params []interface{}
 			
 			if cfg.Debug {
@@ -376,16 +399,36 @@ func InstallCertificate(client Client, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	// deploy the certificate
-	err = createCertificate(client, cfg)
-	if err != nil {
-		return err
-	}
 
-	// load the certificate list
+	// First check if a certificate with this name already exists and is current
 	err = loadCertificateList(client, cfg)
-	if err != nil {
-		return err
+	if err == nil {
+		// Certificate already exists, skip creation
+		if _, exists := certsList[certName]; exists {
+			log.Printf("certificate %s already exists, skipping creation", certName)
+		} else {
+			// deploy the certificate only if it doesn't exist
+			err = createCertificate(client, cfg)
+			if err != nil {
+				return err
+			}
+			// reload the certificate list after creation
+			err = loadCertificateList(client, cfg)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		// deploy the certificate
+		err = createCertificate(client, cfg)
+		if err != nil {
+			return err
+		}
+		// load the certificate list
+		err = loadCertificateList(client, cfg)
+		if err != nil {
+			return err
+		}
 	}
 
 	if cfg.AddAsUiCertificate {
