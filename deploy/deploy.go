@@ -25,6 +25,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 	"tnascert-deploy/config"
 )
 
@@ -159,8 +160,10 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 			}
 			log.Printf("started the app update job with ID: %d", job.ID)
 
-			// Monitor the progress of the job.
+			// Monitor the progress of the job with timeout
 			jobCompleted := false
+			timeout := time.After(time.Duration(cfg.TimeoutSeconds) * time.Second)
+			
 			for !job.Finished && !jobCompleted {
 				select {
 				case progress := <-job.ProgressCh:
@@ -172,6 +175,11 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 					} else {
 						log.Println("Job completed successfully!")
 					}
+				case <-timeout:
+					return fmt.Errorf("job timed out after %d seconds", cfg.TimeoutSeconds)
+				case <-time.After(100 * time.Millisecond):
+					// Periodic check to prevent deadlock if channels are not working properly
+					continue
 				}
 			}
 
@@ -270,8 +278,10 @@ func createCertificate(client Client, cfg *config.Config) error {
 
 	log.Printf("started the certificate creation job with ID: %d", job.ID)
 
-	// Monitor the progress of the job.
+	// Monitor the progress of the job with timeout
 	jobCompleted := false
+	timeout := time.After(time.Duration(cfg.TimeoutSeconds) * time.Second)
+	
 	for !job.Finished && !jobCompleted {
 		select {
 		case progress := <-job.ProgressCh:
@@ -283,6 +293,11 @@ func createCertificate(client Client, cfg *config.Config) error {
 			} else {
 				log.Println("Job completed successfully!")
 			}
+		case <-timeout:
+			return fmt.Errorf("job timed out after %d seconds", cfg.TimeoutSeconds)
+		case <-time.After(100 * time.Millisecond):
+			// Periodic check to prevent deadlock if channels are not working properly
+			continue
 		}
 	}
 
@@ -316,8 +331,10 @@ func deleteCertificates(client Client, cfg *config.Config) error {
 		}
 		log.Printf("deleting old certificate %v, with job ID: %d", k, job.ID)
 
-		// Monitor the progress of the job.
+		// Monitor the progress of the job with timeout
 		jobCompleted := false
+		timeout := time.After(time.Duration(cfg.TimeoutSeconds) * time.Second)
+		
 		for !job.Finished && !jobCompleted {
 			select {
 			case progress := <-job.ProgressCh:
@@ -329,6 +346,11 @@ func deleteCertificates(client Client, cfg *config.Config) error {
 				} else {
 					log.Printf("job completed successfully, certificate %v was deleted", k)
 				}
+			case <-timeout:
+				return fmt.Errorf("certificate deletion job timed out after %d seconds", cfg.TimeoutSeconds)
+			case <-time.After(100 * time.Millisecond):
+				// Periodic check to prevent deadlock if channels are not working properly
+				continue
 			}
 		}
 	}
