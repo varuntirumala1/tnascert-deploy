@@ -515,6 +515,10 @@ func findRecentCertificate(cfg *config.Config) int64 {
 	var mostRecentTime time.Time
 	var mostRecentID int64
 
+	if cfg.Debug {
+		log.Printf("Looking for recent certificates for %s (created after %v)", cfg.CertBasename, thirtyMinutesAgo)
+	}
+
 	for certName, id := range certsList {
 		if strings.HasPrefix(certName, cfg.CertBasename) {
 			parts := strings.Split(certName, "-")
@@ -522,9 +526,15 @@ func findRecentCertificate(cfg *config.Config) int64 {
 				timestampStr := parts[len(parts)-1]
 				if timestamp, err := strconv.ParseInt(timestampStr, 10, 64); err == nil {
 					certTime := time.Unix(timestamp, 0)
+					if cfg.Debug {
+						log.Printf("Checking certificate %s (ID: %d) created at %v", certName, id, certTime)
+					}
 					if certTime.After(thirtyMinutesAgo) && certTime.After(mostRecentTime) {
 						mostRecentTime = certTime
 						mostRecentID = id
+						if cfg.Debug {
+							log.Printf("Found newer recent certificate: %s (ID: %d)", certName, id)
+						}
 					}
 				}
 			}
@@ -532,7 +542,9 @@ func findRecentCertificate(cfg *config.Config) int64 {
 	}
 
 	if mostRecentID > 0 && cfg.Debug {
-		log.Printf("Found recent certificate (ID: %d) created at %v", mostRecentID, mostRecentTime)
+		log.Printf("Selected most recent certificate (ID: %d) created at %v", mostRecentID, mostRecentTime)
+	} else if cfg.Debug {
+		log.Printf("No recent certificates found for %s", cfg.CertBasename)
 	}
 
 	return mostRecentID
@@ -623,7 +635,14 @@ func InstallCertificate(client Client, cfg *config.Config) error {
 	}
 
 	// Check if we actually need to do anything
+	if cfg.Debug {
+		log.Printf("Checking if update is needed for %s...", cfg.CertBasename)
+	}
 	needsUpdate, existingCertID := checkIfUpdateNeeded(client, cfg)
+	if cfg.Debug {
+		log.Printf("Update check result: needsUpdate=%t, existingCertID=%d", needsUpdate, existingCertID)
+	}
+	
 	if !needsUpdate {
 		log.Printf("Certificate and app configuration are already up to date for %s, no action needed", cfg.CertBasename)
 		return nil
