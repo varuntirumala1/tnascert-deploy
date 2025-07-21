@@ -98,10 +98,29 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 		}
 		if len(response.Result.IxCertificates) != 0 {
 			var params []interface{}
-			m := map[string]map[string]int64{
-				"network": {
-					"certificate_id": ID,
-				},
+			
+			if cfg.Debug {
+				log.Printf("Current app config for %s: %+v", app["name"], response.Result)
+			}
+			
+			// Get the current network configuration and preserve it
+			currentConfig := make(map[string]interface{})
+			if response.Result.Network != nil {
+				// Copy existing network config
+				for k, v := range response.Result.Network {
+					currentConfig[k] = v
+				}
+			}
+			
+			// Update only the certificate_id while preserving other settings
+			currentConfig["certificate_id"] = ID
+			
+			if cfg.Debug {
+				log.Printf("Updated network config for %s: %+v", app["name"], currentConfig)
+			}
+			
+			m := map[string]map[string]interface{}{
+				"network": currentConfig,
 			}
 			n := map[string]interface{}{
 				"values": m,
