@@ -356,10 +356,18 @@ func deleteCertificates(client Client, cfg *config.Config) error {
 }
 
 // poll and save all deployed certificates matching our Cert_basename
-// including the newly created certificate
+// skipNewCertCheck: if true, don't look for a specific new certificate, just load all matching ones
 func loadCertificateList(client Client, cfg *config.Config) error {
+	return loadCertificateListWithCheck(client, cfg, false, "")
+}
+
+func loadCertificateListWithCheck(client Client, cfg *config.Config, skipNewCertCheck bool, expectedCertName string) error {
 	var inlist = false
 	var certName = cfg.CertName()
+	if expectedCertName != "" {
+		certName = expectedCertName
+	}
+	
 	args := []interface{}{}
 	resp, err := client.Call("app.certificate_choices", cfg.TimeoutSeconds, args)
 	if err != nil {
@@ -394,16 +402,24 @@ func loadCertificateList(client Client, cfg *config.Config) error {
 				}
 			}
 		}
-		if id, ok := certsList[certName]; ok == true {
-			log.Printf("found new certificate, %v, id: %d", cert["name"], id)
-			inlist = true
+		
+		// Check if we found the expected certificate (only if not skipping the check)
+		if !skipNewCertCheck {
+			if id, ok := certsList[certName]; ok == true {
+				log.Printf("found new certificate, %v, id: %d", cert["name"], id)
+				inlist = true
+			}
+		} else {
+			inlist = true // When skipping check, assume success if we have any matching certificates
 		}
 	}
 
-	if !inlist {
+	if !skipNewCertCheck && !inlist {
 		return fmt.Errorf("certificate search failed, certificate %s was not deployed", certName)
-	} else {
+	} else if !skipNewCertCheck {
 		log.Printf("certificate %s deployed successfully", certName)
+	} else {
+		log.Printf("certificate list loaded successfully, found %d matching certificates", len(certsList))
 	}
 	return nil
 }
@@ -601,7 +617,7 @@ func InstallCertificate(client Client, cfg *config.Config) error {
 	}
 
 	// First load existing certificates to check what's already deployed
-	err = loadCertificateList(client, cfg)
+	err = loadCertificateListWithCheck(client, cfg, true, "")
 	if err != nil {
 		return fmt.Errorf("failed to load certificate list: %v", err)
 	}
@@ -625,8 +641,8 @@ func InstallCertificate(client Client, cfg *config.Config) error {
 		if err != nil {
 			return err
 		}
-		// reload the certificate list after creation
-		err = loadCertificateList(client, cfg)
+		// reload the certificate list after creation and look for the new certificate
+		err = loadCertificateListWithCheck(client, cfg, false, "")
 		if err != nil {
 			return err
 		}
