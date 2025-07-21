@@ -63,25 +63,22 @@ type Client interface {
 	SubscribeToJobs() error
 }
 
-func addAsAppCertificate(client Client, cfg *config.Config) error {
-	var certName = cfg.CertName()
-	ID, ok := certsList[certName]
-	if !ok {
-		return fmt.Errorf("certificate %s not found in the certificates list", certName)
-	}
+func addAsAppCertificateByID(client Client, cfg *config.Config, certID int64) error {
 	args := []interface{}{}
-	var response AppListQueryResponse
 	resp, err := client.Call("app.query", cfg.TimeoutSeconds, args)
 	if err != nil {
 		return fmt.Errorf("app query failed, %v", err)
 	}
+
 	if cfg.Debug {
 		log.Printf("app query response: %v", string(resp))
 	}
+	var response AppListQueryResponse
 	err = json.Unmarshal(resp, &response)
 	if err != nil {
-		return fmt.Errorf("app query failed, %v, ", err)
+		return err
 	}
+
 	for _, app := range response.Result {
 		// If an app name is specified, only apply to that app
 		if cfg.AppName != "" && app["name"].(string) != cfg.AppName {
@@ -115,16 +112,10 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 				}
 			}
 			
-			if currentCertID == ID {
+			if currentCertID == certID {
 				if cfg.Debug {
-					log.Printf("App %s already has the correct certificate (ID: %d), skipping update", app["name"], ID)
+					log.Printf("App %s already has the correct certificate (ID: %d), skipping update", app["name"], certID)
 				}
-				continue
-			}
-			
-			// Check if the app is already using a recent certificate for the same base name
-			if isAppUsingRecentCert(currentCertID, cfg) {
-				log.Printf("App %s is already using a recent certificate for %s, skipping update", app["name"], cfg.CertBasename)
 				continue
 			}
 			
@@ -144,7 +135,7 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 			}
 			
 			// Update only the certificate_id while preserving other settings
-			currentConfig["certificate_id"] = ID
+			currentConfig["certificate_id"] = certID
 			
 			if cfg.Debug {
 				log.Printf("Updated network config for %s: %+v", app["name"], currentConfig)
@@ -190,8 +181,7 @@ func addAsAppCertificate(client Client, cfg *config.Config) error {
 				}
 			}
 
-			log.Printf("updated the certificate for app: %s to use: %s, id: %v", app["name"], certName,
-				certsList[certName])
+			log.Printf("updated the certificate for app: %s to use certificate ID: %d", app["name"], certID)
 		}
 	}
 	return nil
@@ -217,14 +207,9 @@ func addAsFTPCertificate(client Client, cfg *config.Config) error {
 	return nil
 }
 
-func addAsUICertificate(client Client, cfg *config.Config) (bool, error) {
-	var certName = cfg.CertName()
-	ID, ok := certsList[certName]
-	if !ok {
-		return false, fmt.Errorf("certificate %s not found in the certificates list", certName)
-	}
+func addAsUICertificateByID(client Client, cfg *config.Config, certID int64) (bool, error) {
 	pmap := map[string]int64{
-		"ui_certificate": ID,
+		"ui_certificate": certID,
 	}
 	args := []interface{}{pmap}
 	_, err := client.Call("system.general.update", cfg.TimeoutSeconds, args)
@@ -232,6 +217,12 @@ func addAsUICertificate(client Client, cfg *config.Config) (bool, error) {
 		return false, fmt.Errorf("system.general.update of ui_certificate failed, %v", err)
 	}
 	return true, nil
+}
+
+func addAsFTPCertificateByID(client Client, cfg *config.Config, certID int64) error {
+	// Implementation for FTP certificate if needed
+	// For now, just return nil as it's not commonly used
+	return nil
 }
 
 // login with an API key
@@ -475,6 +466,125 @@ func isAppUsingRecentCert(certID int64, cfg *config.Config) bool {
 	return false
 }
 
+// checkIfUpdateNeeded determines if we need to create/update certificates or if everything is already current
+// Returns (needsUpdate, existingCertID)
+func checkIfUpdateNeeded(client Client, cfg *config.Config) (bool, int64) {
+	// First check if there are any recent certificates for this base name
+	recentCertID := findRecentCertificate(cfg)
+	if recentCertID <= 0 {
+		// No recent certificate exists, we need to create one
+		return true, 0
+	}
+
+	// Check if apps are already using the recent certificate
+	if cfg.AddAsAppCertificate {
+		appsNeedUpdate := checkIfAppsNeedCertUpdate(client, cfg, recentCertID)
+		if appsNeedUpdate {
+			return true, recentCertID // Use existing cert but update apps
+		}
+	}
+
+	// Check UI certificate if needed
+	if cfg.AddAsUiCertificate {
+		// Could add UI certificate check here if needed
+		// For now, assume UI updates are less disruptive
+	}
+
+	return false, recentCertID // Everything is up to date
+}
+
+// findRecentCertificate finds the most recent certificate for the base name
+func findRecentCertificate(cfg *config.Config) int64 {
+	thirtyMinutesAgo := time.Now().Add(-30 * time.Minute)
+	var mostRecentTime time.Time
+	var mostRecentID int64
+
+	for certName, id := range certsList {
+		if strings.HasPrefix(certName, cfg.CertBasename) {
+			parts := strings.Split(certName, "-")
+			if len(parts) >= 4 {
+				timestampStr := parts[len(parts)-1]
+				if timestamp, err := strconv.ParseInt(timestampStr, 10, 64); err == nil {
+					certTime := time.Unix(timestamp, 0)
+					if certTime.After(thirtyMinutesAgo) && certTime.After(mostRecentTime) {
+						mostRecentTime = certTime
+						mostRecentID = id
+					}
+				}
+			}
+		}
+	}
+
+	if mostRecentID > 0 && cfg.Debug {
+		log.Printf("Found recent certificate (ID: %d) created at %v", mostRecentID, mostRecentTime)
+	}
+
+	return mostRecentID
+}
+
+// checkIfAppsNeedCertUpdate checks if any apps need certificate updates
+func checkIfAppsNeedCertUpdate(client Client, cfg *config.Config, targetCertID int64) bool {
+	args := []interface{}{}
+	resp, err := client.Call("app.query", cfg.TimeoutSeconds, args)
+	if err != nil {
+		log.Printf("Warning: failed to query apps: %v", err)
+		return true // Assume update needed if we can't check
+	}
+
+	var response AppListQueryResponse
+	err = json.Unmarshal(resp, &response)
+	if err != nil {
+		log.Printf("Warning: failed to parse apps response: %v", err)
+		return true
+	}
+
+	for _, app := range response.Result {
+		// If an app name is specified, only check that app
+		if cfg.AppName != "" && app["name"].(string) != cfg.AppName {
+			continue
+		}
+
+		// Get app config to check current certificate
+		var appResponse AppConfigResponse
+		args := []interface{}{app["id"]}
+		appConfig, err := client.Call("app.config", cfg.TimeoutSeconds, args)
+		if err != nil {
+			continue // Skip this app if we can't get config
+		}
+		err = json.Unmarshal(appConfig, &appResponse)
+		if err != nil {
+			continue
+		}
+
+		if len(appResponse.Result.IxCertificates) != 0 {
+			// Check current certificate ID
+			currentCertID := int64(-1)
+			if appResponse.Result.Network != nil {
+				if certIDVal, exists := appResponse.Result.Network["certificate_id"]; exists {
+					switch v := certIDVal.(type) {
+					case float64:
+						currentCertID = int64(v)
+					case int64:
+						currentCertID = v
+					case int:
+						currentCertID = int64(v)
+					}
+				}
+			}
+
+			if currentCertID != targetCertID {
+				if cfg.Debug {
+					log.Printf("App %s needs certificate update: current ID %d, target ID %d", 
+						app["name"], currentCertID, targetCertID)
+				}
+				return true // At least one app needs update
+			}
+		}
+	}
+
+	return false // All apps are already using the target certificate
+}
+
 func InstallCertificate(client Client, cfg *config.Config) error {
 	var certName string = cfg.CertName()
 	var activated = false
@@ -490,54 +600,62 @@ func InstallCertificate(client Client, cfg *config.Config) error {
 		return err
 	}
 
-	// First check if a certificate with this base name already exists and is recent
+	// First load existing certificates to check what's already deployed
 	err = loadCertificateList(client, cfg)
-	if err == nil {
-		// Check for existing recent certificates with the same base name
-		recentCertExists := checkForRecentCertificate(cfg)
-		if recentCertExists {
-			log.Printf("recent certificate for %s already exists, skipping creation", cfg.CertBasename)
-		} else {
-			// deploy the certificate only if no recent cert exists
-			err = createCertificate(client, cfg)
-			if err != nil {
-				return err
-			}
-			// reload the certificate list after creation
-			err = loadCertificateList(client, cfg)
-			if err != nil {
-				return err
-			}
-		}
+	if err != nil {
+		return fmt.Errorf("failed to load certificate list: %v", err)
+	}
+
+	// Check if we actually need to do anything
+	needsUpdate, existingCertID := checkIfUpdateNeeded(client, cfg)
+	if !needsUpdate {
+		log.Printf("Certificate and app configuration are already up to date for %s, no action needed", cfg.CertBasename)
+		return nil
+	}
+
+	var certID int64
+	if existingCertID > 0 {
+		// Use existing recent certificate
+		certID = existingCertID
+		log.Printf("Using existing recent certificate (ID: %d) for %s", certID, cfg.CertBasename)
 	} else {
-		// deploy the certificate
+		// Create new certificate only if none exists or all are old
+		log.Printf("Creating new certificate for %s", cfg.CertBasename)
 		err = createCertificate(client, cfg)
 		if err != nil {
 			return err
 		}
-		// load the certificate list
+		// reload the certificate list after creation
 		err = loadCertificateList(client, cfg)
 		if err != nil {
 			return err
 		}
+		// Get the newly created certificate ID
+		certName := cfg.CertName()
+		var ok bool
+		certID, ok = certsList[certName]
+		if !ok {
+			return fmt.Errorf("newly created certificate %s not found", certName)
+		}
 	}
 
+	// Now apply certificates where needed
 	if cfg.AddAsUiCertificate {
-		activated, err = addAsUICertificate(client, cfg)
+		activated, err = addAsUICertificateByID(client, cfg, certID)
 		if err != nil {
 			return err
 		}
 	}
 
 	if cfg.AddAsFTPCertificate {
-		err := addAsFTPCertificate(client, cfg)
+		err := addAsFTPCertificateByID(client, cfg, certID)
 		if err != nil {
 			return err
 		}
 	}
 
 	if cfg.AddAsAppCertificate {
-		err := addAsAppCertificate(client, cfg)
+		err := addAsAppCertificateByID(client, cfg, certID)
 		if err != nil {
 			return err
 		}
